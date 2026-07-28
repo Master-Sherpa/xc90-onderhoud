@@ -407,10 +407,17 @@
 
       <div class="form-grid">
         <div class="field full">
-          <label>Foto (maak een foto of kies er een)</label>
+          <label>Foto</label>
           <div class="upload-drop" id="uploadDrop">
-            <span id="uploadHint">📷 Tik om een foto te maken of te kiezen</span>
-            <input type="file" id="wishPhoto" accept="image/*" capture="environment" style="display:none;">
+            <div id="uploadHintWrap">
+              <div style="margin-bottom:10px;">📷 Voeg een foto toe</div>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <button type="button" class="btn ghost" id="btnTakePhoto">Maak foto</button>
+                <button type="button" class="btn ghost" id="btnChoosePhoto">Kies uit bibliotheek</button>
+              </div>
+            </div>
+            <input type="file" id="wishPhotoCamera" accept="image/*" capture="environment" style="display:none;">
+            <input type="file" id="wishPhotoLibrary" accept="image/*" style="display:none;">
           </div>
         </div>
         <div class="field"><label>Wat is het?</label><input type="text" id="wishTitle" placeholder="bv. Motorsteun links, kentekenplaathouder..."></div>
@@ -907,17 +914,22 @@ function compressImage(file){
 let pendingPhoto = null;
 let wishFilter = 'alle';
 
-document.getElementById('uploadDrop').addEventListener('click', ()=>{
-  document.getElementById('wishPhoto').click();
+document.getElementById('btnTakePhoto').addEventListener('click', ()=>{
+  document.getElementById('wishPhotoCamera').click();
 });
-document.getElementById('wishPhoto').addEventListener('change', async (e)=>{
+document.getElementById('btnChoosePhoto').addEventListener('click', ()=>{
+  document.getElementById('wishPhotoLibrary').click();
+});
+async function handlePhotoPicked(e){
   const file = e.target.files[0]; if(!file) return;
   showToast('Foto verwerken...');
   pendingPhoto = await compressImage(file);
   const drop = document.getElementById('uploadDrop');
   drop.classList.add('has-preview');
   drop.innerHTML = `<img src="${pendingPhoto}" alt="">`;
-});
+}
+document.getElementById('wishPhotoCamera').addEventListener('change', handlePhotoPicked);
+document.getElementById('wishPhotoLibrary').addEventListener('change', handlePhotoPicked);
 
 document.getElementById('saveWish').addEventListener('click', async ()=>{
   const title = document.getElementById('wishTitle').value.trim();
@@ -935,11 +947,25 @@ function resetWishForm(){
   document.getElementById('wishTitle').value = '';
   document.getElementById('wishNote').value = '';
   document.getElementById('wishStatus').value = 'zoeken';
-  document.getElementById('wishPhoto').value = '';
+  document.getElementById('wishPhotoCamera').value = '';
+  document.getElementById('wishPhotoLibrary').value = '';
   pendingPhoto = null;
   const drop = document.getElementById('uploadDrop');
   drop.classList.remove('has-preview');
-  drop.innerHTML = '<span id="uploadHint">📷 Tik om een foto te maken of te kiezen</span>';
+  drop.innerHTML = `<div id="uploadHintWrap">
+      <div style="margin-bottom:10px;">📷 Voeg een foto toe</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button type="button" class="btn ghost" id="btnTakePhoto">Maak foto</button>
+        <button type="button" class="btn ghost" id="btnChoosePhoto">Kies uit bibliotheek</button>
+      </div>
+    </div>
+    <input type="file" id="wishPhotoCamera" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="wishPhotoLibrary" accept="image/*" style="display:none;">`;
+  // re-bind since innerHTML replaced the nodes
+  document.getElementById('btnTakePhoto').addEventListener('click', ()=>document.getElementById('wishPhotoCamera').click());
+  document.getElementById('btnChoosePhoto').addEventListener('click', ()=>document.getElementById('wishPhotoLibrary').click());
+  document.getElementById('wishPhotoCamera').addEventListener('change', handlePhotoPicked);
+  document.getElementById('wishPhotoLibrary').addEventListener('change', handlePhotoPicked);
 }
 
 document.getElementById('wishFilters').addEventListener('click', (e)=>{
