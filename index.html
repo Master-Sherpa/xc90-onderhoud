@@ -280,6 +280,10 @@
     <div class="panel">
       <h2>Kosten &amp; kilometrage per jaar</h2>
       <div class="desc">Onderhoudskosten (balken) tegenover geschat aantal gereden kilometers per jaar (lijn). Wordt automatisch bijgewerkt zodra je iets nieuws logt.</div>
+      <div class="filter-row" id="chartModeToggle">
+        <span class="filter-chip active" data-mode="jaar">Per jaar</span>
+        <span class="filter-chip" data-mode="totaal">Totaal (cumulatief)</span>
+      </div>
       <div class="chart-row">
         <div class="chart-box"><canvas id="yearChart"></canvas></div>
         <div class="chart-box"><canvas id="catChart"></canvas></div>
@@ -600,22 +604,94 @@ function renderCluster(){
    RENDER: CHARTS
    ============================================================ */
 let yearChartInst=null, catChartInst=null;
-function renderCharts(){
-  const all = getAllHistory();
+let chartMode='jaar';
+const PURCHASE_DATE = new Date('2021-12-21');
+const PURCHASE_KM = 162773;
+
+function buildKmTimeline(all){
+  const pts = [{date:PURCHASE_DATE, km:PURCHASE_KM}];
+  all.forEach(r=> pts.push({date:new Date(r.date), km:r.km}));
+  pts.sort((a,b)=>a.date-b.date);
+  return pts;
+}
+function interpKm(pts, targetDate){
+  if(targetDate <= pts[0].date) return pts[0].km;
+  if(targetDate >= pts[pts.length-1].date) return pts[pts.length-1].km;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i], b=pts[i+1];
+    if(a.date<=targetDate && targetDate<=b.date){
+      if(+b.date===+a.date) return a.km;
+      const frac = (targetDate-a.date)/(b.date-a.date);
+      return a.km + frac*(b.km-a.km);
+    }
+  }
+  return pts[pts.length-1].km;
+}
+function computeYearly(all){
   const byYear = {};
   all.forEach(r=>{ const y=r.date.slice(0,4); byYear[y]=(byYear[y]||0)+r.amount; });
   const years = Object.keys(byYear).sort();
-  const costData = years.map(y=>Math.round(byYear[y]*100)/100);
+  const costPerYear = years.map(y=>Math.round(byYear[y]*100)/100);
+
+  const pts = buildKmTimeline(all);
+  const now = new Date();
+  const kmPerYear = years.map(y=>{
+    const yNum=parseInt(y);
+    const start=new Date(yNum,0,1);
+    const endC=new Date(yNum+1,0,1);
+    const end = endC<now?endC:now;
+    return Math.round(interpKm(pts,end)-interpKm(pts,start));
+  });
+  const kmCumulative = years.map(y=>{
+    const yNum=parseInt(y);
+    const endC=new Date(yNum+1,0,1);
+    const end = endC<now?endC:now;
+    return Math.round(interpKm(pts,end)-PURCHASE_KM);
+  });
+  let running=0;
+  const costCumulative = costPerYear.map(c=>{ running+=c; return Math.round(running*100)/100; });
+
+  return {years, costPerYear, kmPerYear, costCumulative, kmCumulative};
+}
+
+function renderCharts(){
+  const all = getAllHistory();
+  const {years, costPerYear, kmPerYear, costCumulative, kmCumulative} = computeYearly(all);
+
+  const isTotaal = chartMode==='totaal';
+  const costData = isTotaal ? costCumulative : costPerYear;
+  const kmData = isTotaal ? kmCumulative : kmPerYear;
+  const costLabel = isTotaal ? 'Totale kosten cumulatief (€)' : 'Kosten per jaar (€)';
+  const kmLabel = isTotaal ? 'Totaal gereden km (cumulatief)' : 'Gereden km per jaar';
 
   if(yearChartInst) yearChartInst.destroy();
   yearChartInst = new Chart(document.getElementById('yearChart'), {
-    type:'bar',
-    data:{ labels:years, datasets:[{ label:'Kosten (€)', data:costData,
-      backgroundColor:years.map((y,i)=> i===years.length-1? cAmber : cIce), borderRadius:4 }] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>' € '+ctx.parsed.y.toLocaleString('nl-NL',{minimumFractionDigits:2})}} },
-      scales:{ x:{grid:{color:'rgba(255,255,255,0.05)'}}, y:{grid:{color:'rgba(255,255,255,0.05)'}, ticks:{callback:v=>'€'+v}} }
+    data:{
+      labels:years,
+      datasets:[
+        { type:'bar', label:costLabel, data:costData,
+          backgroundColor: isTotaal ? cIce : years.map((y,i)=> i===years.length-1? cAmber : cIce),
+          borderRadius:4, yAxisID:'y' },
+        { type:'line', label:kmLabel, data:kmData,
+          borderColor:'#e9edf0', backgroundColor:'#e9edf0', borderWidth:1.5,
+          pointRadius:3, tension:0.3, yAxisID:'y1' }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>{
+          if(ctx.dataset.yAxisID==='y') return ' € '+ctx.parsed.y.toLocaleString('nl-NL',{minimumFractionDigits:2});
+          return ' '+ctx.parsed.y.toLocaleString('nl-NL')+' km';
+        }}}
+      },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{position:'left',grid:{color:'rgba(255,255,255,0.05)'},ticks:{callback:v=>'€'+v}},
+        y1:{position:'right',grid:{display:false},ticks:{callback:v=>(v/1000)+'k'}}
+      }
     }
   });
 
@@ -636,6 +712,14 @@ function renderCharts(){
     }
   });
 }
+
+document.getElementById('chartModeToggle').addEventListener('click', (e)=>{
+  const chip = e.target.closest('.filter-chip'); if(!chip) return;
+  document.querySelectorAll('#chartModeToggle .filter-chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  chartMode = chip.dataset.mode;
+  renderCharts();
+});
 
 /* ============================================================
    RENDER: PLANNING
