@@ -451,7 +451,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';s.onload=function(){ if(typeof renderCharts==='function') renderCharts(); };document.head.appendChild(s);"></script>
 <script>
 /* ============================================================
    DATA
@@ -655,6 +655,11 @@ function computeYearly(all){
 }
 
 function renderCharts(){
+  if(typeof Chart === 'undefined'){
+    const row = document.getElementById('yearChart').closest('.chart-row');
+    if(row) row.innerHTML = '<div style="grid-column:1/-1;color:var(--muted);text-align:center;padding:30px 10px;font-size:13px;">Grafieken konden niet geladen worden (waarschijnlijk een netwerk- of advertentieblokkering op dit toestel). Rest van de app werkt gewoon door.</div>';
+    return;
+  }
   const all = getAllHistory();
   const {years, costPerYear, kmPerYear, costCumulative, kmCumulative} = computeYearly(all);
 
@@ -1150,17 +1155,23 @@ function showToast(msg){
 /* ============================================================
    INIT
    ============================================================ */
-function refreshAll(){
-  renderCluster();
-  renderCharts();
-  renderPlanning();
-  renderHistoryTable();
-  renderOwnLog();
+function safeRun(fn, label){
+  try{ fn(); }
+  catch(e){
+    console.error('Fout bij renderen van "'+label+'":', e);
+  }
 }
-renderIdeas();
-renderVideos();
-renderStock();
-renderWishlist();
+function refreshAll(){
+  safeRun(renderCluster, 'kerncijfers');
+  safeRun(renderPlanning, 'onderhoudsplanning');
+  safeRun(renderHistoryTable, 'kostenhistorie');
+  safeRun(renderOwnLog, 'eigen logboek');
+  safeRun(renderCharts, 'grafieken');
+}
+safeRun(renderIdeas, 'aandachtspunten');
+safeRun(renderVideos, 'video overzicht');
+safeRun(renderStock, 'voorraad');
+try{ renderWishlist(); }catch(e){ console.error('Fout bij renderen van "zoeklijst":', e); }
 refreshAll();
 </script>
 </body>
